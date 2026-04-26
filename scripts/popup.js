@@ -19,6 +19,63 @@ const setRepoLink = hook => {
   repoElement.appendChild(link);
 };
 
+const emptyStats = () => ({
+  shas: {},
+  solved: 0,
+  easy: 0,
+  medium: 0,
+  hard: 0,
+});
+
+const encode = data => btoa(unescape(encodeURIComponent(data)));
+
+const storageGet = keys => new Promise(resolve => api.storage.local.get(keys, resolve));
+const storageSet = data => new Promise(resolve => api.storage.local.set(data, resolve));
+
+async function resetGitHubStats(token, hook) {
+  if (!token || !hook) {
+    return;
+  }
+
+  const url = `https://api.github.com/repos/${hook}/contents/stats.json`;
+  const headers = {
+    Authorization: `token ${token}`,
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  const existing = await fetch(url, { headers });
+  if (existing.status === 404) {
+    return;
+  }
+  if (!existing.ok) {
+    throw new Error(`Unable to fetch GitHub stats: ${existing.status}`);
+  }
+
+  const { sha } = await existing.json();
+  const resetPayload = {
+    message: 'Reset stats',
+    content: encode(JSON.stringify({ leetcode: emptyStats() })),
+    sha,
+  };
+
+  const updated = await fetch(url, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(resetPayload),
+  });
+
+  if (!updated.ok) {
+    throw new Error(`Unable to reset GitHub stats: ${updated.status}`);
+  }
+}
+
+function renderStats(stats) {
+  $('#p_solved').text(stats?.solved ?? 0);
+  $('#p_solved_easy').text(stats?.easy ?? 0);
+  $('#p_solved_medium').text(stats?.medium ?? 0);
+  $('#p_solved_hard').text(stats?.hard ?? 0);
+}
+
 $('#authenticate').on('click', () => {
   if (action) {
     oAuth2.begin();
@@ -32,13 +89,20 @@ $('#reset_stats').on('click', () => {
   $('#reset_confirmation').show();
   $('#reset_yes')
     .off('click')
-    .on('click', () => {
-      api.storage.local.set({ stats: null, sync_stats: false });
-      $('#p_solved').text(0);
-      $('#p_solved_easy').text(0);
-      $('#p_solved_medium').text(0);
-      $('#p_solved_hard').text(0);
-      $('#reset_confirmation').hide();
+    .on('click', async () => {
+      const stats = emptyStats();
+      $('#reset_yes').attr('disabled', true);
+      try {
+        const { leethub_token, leethub_hook } = await storageGet(['leethub_token', 'leethub_hook']);
+        await resetGitHubStats(leethub_token, leethub_hook);
+        await storageSet({ stats, sync_stats: false });
+        renderStats(stats);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        $('#reset_yes').attr('disabled', false);
+        $('#reset_confirmation').hide();
+      }
     });
   $('#reset_no')
     .off('click')
@@ -67,10 +131,7 @@ api.storage.local.get('leethub_token', data => {
               /* Get problem stats and repo link */
               api.storage.local.get(['stats', 'leethub_hook'], data3 => {
                 const stats = data3?.stats;
-                $('#p_solved').text(stats?.solved ?? 0);
-                $('#p_solved_easy').text(stats?.easy ?? 0);
-                $('#p_solved_medium').text(stats?.medium ?? 0);
-                $('#p_solved_hard').text(stats?.hard ?? 0);
+                renderStats(stats);
                 const leethubHook = data3?.leethub_hook;
                 if (leethubHook) {
                   setRepoLink(leethubHook);

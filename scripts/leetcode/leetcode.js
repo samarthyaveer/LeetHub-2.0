@@ -679,30 +679,6 @@ document.addEventListener(
   true
 );
 
-/* Sync to local storage */
-api.storage.local.get('isSync', data => {
-  const keys = [
-    'leethub_token',
-    'leethub_username',
-    'pipe_leethub',
-    'stats',
-    'leethub_hook',
-    'mode_type',
-  ];
-  if (!data || !data.isSync) {
-    keys.forEach(key => {
-      api.storage.sync.get(key, data => {
-        api.storage.local.set({ [key]: data[key] });
-      });
-    });
-    api.storage.local.set({ isSync: true }, () => {
-      console.log('LeetHub Synced to local values');
-    });
-  } else {
-    console.log('LeetHub Local storage already synced!');
-  }
-});
-
 setupManualSubmitBtn(
   debounce(
     () => {
