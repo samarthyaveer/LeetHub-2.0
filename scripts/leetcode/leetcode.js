@@ -30,6 +30,7 @@ const EXPLORE_SECTION_PROBLEM = 1;
 const WAIT_FOR_GITHUB_API_TO_NOT_THROW_409_MS = 500;
 
 const api = getBrowser();
+let isListeningForSubmission = false;
 
 /**
  * Constructs a file path by appending the given filename to the problem directory.
@@ -77,8 +78,10 @@ const upload = async (token, hook, content, problem, filename, sha, message) => 
   let data = {
     message,
     content,
-    sha,
   };
+  if (sha) {
+    data.sha = sha;
+  }
 
   let options = {
     method: 'PUT',
@@ -154,7 +157,7 @@ const incrementStats = (difficulty, problem) => {
 const setPersistentStats = async localStats => {
   let pStats = { leetcode: localStats };
   const pStatsEncoded = encode(JSON.stringify(pStats));
-  const sha = localStats?.shas?.[readmeFilename]?.[''] || '';
+  const sha = localStats?.shas?.[statsFilename]?.[''] || '';
 
   const { leethub_token: token, leethub_hook: hook } = await api.storage.local.get([
     'leethub_token',
@@ -391,13 +394,17 @@ async function updateReadmeTopicTagsWithProblem(topicTags, problemName) {
       readmeFilename
     ).then(resp => resp.json());
     readme = content;
-    stats.shas[readmeFilename] = { '': sha };
-    await api.storage.local.set({ stats });
+    const updatedStats = stats ?? { shas: {}, solved: 0, easy: 0, medium: 0, hard: 0 };
+    updatedStats.shas ??= {};
+    updatedStats.shas[readmeFilename] = { '': sha };
+    await api.storage.local.set({ stats: updatedStats });
   } catch (err) {
     if (err.message === '404') {
       newSha = await createRepoReadme();
+      readme = encode(defaultRepoReadme);
+    } else {
+      throw err;
     }
-    throw err;
   }
   readme = decode(readme);
   for (let topic of topicTags) {
@@ -417,12 +424,30 @@ function loader(leetCode) {
   let iterations = 0;
   const intervalId = setInterval(async () => {
     try {
-      const isSuccessfulSubmission = leetCode.getSuccessStateAndUpdate();
+      let isSuccessfulSubmission;
+      if (leetCode.submissionId && typeof leetCode.init === 'function') {
+        try {
+          await leetCode.init();
+        } catch (err) {
+          iterations++;
+          if (iterations > 29) {
+            throw err;
+          }
+          return;
+        }
+        isSuccessfulSubmission =
+          typeof leetCode.isAcceptedSubmission === 'function'
+            ? leetCode.isAcceptedSubmission()
+            : leetCode.getSuccessStateAndUpdate();
+      } else {
+        isSuccessfulSubmission = leetCode.getSuccessStateAndUpdate();
+      }
+
       if (!isSuccessfulSubmission) {
         iterations++;
-        if (iterations > 9) {
-          // poll for max 10 attempts (10 seconds)
-          throw new LeetHubError('Could not find successful submission after 10 seconds.');
+        if (iterations > 29) {
+          // poll for max 30 attempts (30 seconds)
+          throw new LeetHubError('Could not find successful submission after 30 seconds.');
         }
         return;
       }
@@ -431,8 +456,10 @@ function loader(leetCode) {
       // If successful, stop polling
       clearInterval(intervalId);
 
-      // For v2, query LeetCode API for submission results
-      await leetCode.init();
+      // For v2 manual uploads without cached API data, query LeetCode API for submission results.
+      if (!leetCode.submissionData) {
+        await leetCode.init();
+      }
 
       const probStats = leetCode.parseStats();
       if (!probStats) {
@@ -523,6 +550,7 @@ function wasSubmittedByKeyboard(event) {
 async function listenForSubmissionId() {
   const { submissionId } = await api.runtime.sendMessage({
     type: 'LEETCODE_SUBMISSION',
+    timeoutMs: 30000,
   });
   if (submissionId == null) {
     console.log(new LeetHubError('SubmissionIdNotFound'));
@@ -541,6 +569,10 @@ async function v2SubmissionHandler(event, leetCode) {
     return;
   }
 
+  if (isListeningForSubmission) {
+    return false;
+  }
+
   const authenticated =
     !isEmptyObject(await api.storage.local.get(['leethub_token'])) &&
     !isEmptyObject(await api.storage.local.get(['leethub_hook']));
@@ -549,10 +581,32 @@ async function v2SubmissionHandler(event, leetCode) {
   }
 
   // is click or is ctrl enter
-  const submissionId = await listenForSubmissionId();
+  isListeningForSubmission = true;
+  let submissionId;
+  try {
+    submissionId = await listenForSubmissionId();
+  } finally {
+    isListeningForSubmission = false;
+  }
+  if (!submissionId) {
+    return false;
+  }
   leetCode.submissionId = submissionId;
   loader(leetCode);
   return true;
+}
+
+function isLikelyV2SubmitButton(element) {
+  const button = element?.closest?.('button');
+  if (!button) {
+    return false;
+  }
+
+  return (
+    button.matches('[data-e2e-locator="console-submit-button"]') ||
+    button.dataset?.cy === 'submit-code-btn' ||
+    button.textContent?.trim().toLowerCase() === 'submit'
+  );
 }
 
 // Use MutationObserver to determine when the submit button elements are loaded
@@ -591,6 +645,28 @@ submitBtnObserver.observe(document.body, {
   subtree: true,
 });
 
+document.addEventListener(
+  'click',
+  event => {
+    if (!isLikelyV2SubmitButton(event.target)) {
+      return;
+    }
+    v2SubmissionHandler(event, new LeetCodeV2()).catch(err => console.error(err));
+  },
+  true
+);
+
+document.addEventListener(
+  'keydown',
+  event => {
+    if (!wasSubmittedByKeyboard(event)) {
+      return;
+    }
+    v2SubmissionHandler(event, new LeetCodeV2()).catch(err => console.error(err));
+  },
+  true
+);
+
 /* Sync to local storage */
 api.storage.local.get('isSync', data => {
   const keys = [
@@ -620,7 +696,11 @@ setupManualSubmitBtn(
     () => {
       const leetCode = new LeetCodeV2();
       // Manual submission event can only fire when we have submissionId. Simply retrieve it.
-      const submissionId = window.location.href.match(/leetcode\.com\/.*\/submissions\/(\d+)/)[1];
+      const submissionId = window.location.href.match(/\/submissions(?:\/detail)?\/(\d+)\/?/)?.[1];
+      if (!submissionId) {
+        console.log(new LeetHubError('SubmissionIdNotFound'));
+        return;
+      }
       leetCode.submissionId = submissionId;
       loader(leetCode);
       return;

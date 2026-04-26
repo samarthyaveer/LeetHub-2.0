@@ -18,10 +18,11 @@
   "background": {
     "service_worker": "scripts/background.js"
   },
-  "permissions": [
-    "unlimitedStorage",
-    "storage",
-    "webNavigation"
+  "permissions": ["unlimitedStorage", "storage", "webNavigation"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*",
+    "https://leetcode.com/*"
   ],
   "content_scripts": [
     {
