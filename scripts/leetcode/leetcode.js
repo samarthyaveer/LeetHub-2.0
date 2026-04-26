@@ -434,14 +434,19 @@ function loader(leetCode) {
     try {
       let isSuccessfulSubmission;
       if (leetCode.submissionId && typeof leetCode.init === 'function') {
-        try {
-          await leetCode.init();
-        } catch (err) {
-          iterations++;
-          if (iterations > 29) {
-            throw err;
+        // Only call init() once per submission to avoid redundant GraphQL requests
+        // that could hit LeetCode rate limits.
+        if (!leetCode._initDone) {
+          try {
+            await leetCode.init();
+            leetCode._initDone = true;
+          } catch (err) {
+            iterations++;
+            if (iterations > 29) {
+              throw err;
+            }
+            return;
           }
-          return;
         }
         isSuccessfulSubmission =
           typeof leetCode.isAcceptedSubmission === 'function'
@@ -467,6 +472,7 @@ function loader(leetCode) {
       // For v2 manual uploads without cached API data, query LeetCode API for submission results.
       if (!leetCode.submissionData) {
         await leetCode.init();
+        leetCode._initDone = true;
       }
 
       const probStats = leetCode.parseStats();
@@ -570,11 +576,11 @@ async function listenForSubmissionId() {
 /**
  * @param {Event} event
  * @param {LeetCodeV2} leetCode
- * @returns {void}
+ * @returns {Promise<boolean>} Whether the submission was handled successfully.
  */
 async function v2SubmissionHandler(event, leetCode) {
   if (event.type !== 'click' && !wasSubmittedByKeyboard(event)) {
-    return;
+    return false;
   }
 
   if (isListeningForSubmission) {
@@ -610,9 +616,10 @@ function isLikelyV2SubmitButton(element) {
     return false;
   }
 
+  // Only match v2-specific selectors. Avoid `data-cy="submit-code-btn"` which is shared
+  // with v1 and would incorrectly trigger the v2 submission flow on v1 pages.
   return (
     button.matches('[data-e2e-locator="console-submit-button"]') ||
-    button.dataset?.cy === 'submit-code-btn' ||
     button.textContent?.trim().toLowerCase() === 'submit'
   );
 }
