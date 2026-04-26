@@ -168,7 +168,7 @@ LeetCodeV1.prototype.getNotesIfAny = function () {
       .getElementsByClassName('notewrap__eHkN')[0]
       .getElementsByClassName('CodeMirror-code')[0];
     if (notesdiv) {
-      for (i = 0; i < notesdiv.childNodes.length; i++) {
+      for (let i = 0; i < notesdiv.childNodes.length; i++) {
         if (notesdiv.childNodes[i].childNodes.length == 0) continue;
         const text = notesdiv.childNodes[i].childNodes[0].innerText;
         if (text) {
@@ -271,7 +271,7 @@ LeetCodeV1.prototype.parseQuestion = function () {
       this.difficulty = getDifficulty(null);
     }
     // Final formatting of the contents of the README for each problem
-    const markdown = `<h2><a href="${questionUrl}">${qtitle}</a></h2><h3>${difficulty}</h3><hr>${qbody}`;
+    const markdown = `<h2><a href="${questionUrl}">${qtitle}</a></h2><h3>${this.difficulty}</h3><hr>${qbody}`;
     return markdown;
   } else if (checkElem(questionDescriptionElem)) {
     let questionTitle = document.getElementsByClassName('question-title');
@@ -318,7 +318,9 @@ LeetCodeV1.prototype.insertToAnchorElement = function (elem) {
       checkElem(action[0].getElementsByClassName('row')[0].getElementsByClassName('col-sm-6')) &&
       action[0].getElementsByClassName('row')[0].getElementsByClassName('col-sm-6').length > 1
     ) {
-      target = action[0].getElementsByClassName('row')[0].getElementsByClassName('col-sm-6')[1];
+      const target = action[0]
+        .getElementsByClassName('row')[0]
+        .getElementsByClassName('col-sm-6')[1];
       elem.className = 'pull-left';
       if (target.childNodes.length > 0) target.childNodes[0].prepend(elem);
     }

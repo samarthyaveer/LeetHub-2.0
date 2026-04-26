@@ -37,7 +37,7 @@ const setMessageWithLink = (selector, parts) => {
 
 /* Sync's local storage with persistent stats and returns the pulled stats. Currently only syncs when we install, or unlink then relink */
 const syncStats = async () => {
-  let { leethub_hook, leethub_token, sync_stats, stats } = await api.storage.local.get([
+  let { leethub_hook, leethub_token, sync_stats } = await api.storage.local.get([
     'leethub_token',
     'leethub_hook',
     'sync_stats',

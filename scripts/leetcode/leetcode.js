@@ -23,10 +23,6 @@ const defaultRepoReadme =
 const readmeFilename = 'README.md';
 const statsFilename = 'stats.json';
 
-// problem types
-const NORMAL_PROBLEM = 0;
-const EXPLORE_SECTION_PROBLEM = 1;
-
 const WAIT_FOR_GITHUB_API_TO_NOT_THROW_409_MS = 500;
 
 const api = getBrowser();
@@ -522,7 +518,7 @@ function loader(leetCode) {
         problemName
       );
 
-      const newSHAs = await Promise.all([uploadReadMe, uploadNotes, uploadCode, updateRepoReadMe]);
+      await Promise.all([uploadReadMe, uploadNotes, uploadCode, updateRepoReadMe]);
 
       leetCode.markUploaded();
 
@@ -645,7 +641,7 @@ const submitBtnObserver = new MutationObserver(function (_mutations, observer) {
     observer.disconnect();
 
     const leetCode = new LeetCodeV2();
-    if (!!!v2SubmitBtn.onclick) {
+    if (!v2SubmitBtn.onclick) {
       textarea.addEventListener('keydown', e => v2SubmissionHandler(e, leetCode));
       v2SubmitBtn.onclick = e => v2SubmissionHandler(e, leetCode);
     }
@@ -697,10 +693,3 @@ setupManualSubmitBtn(
     true
   )
 );
-
-class LeetHubNetworkError extends LeetHubError {
-  constructor(response) {
-    super(response.statusText);
-    this.status = response.status;
-  }
-}
