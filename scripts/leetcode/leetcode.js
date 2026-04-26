@@ -378,9 +378,15 @@ async function updateReadmeTopicTagsWithProblem(topicTags, problemName) {
     return;
   }
 
-  const { leethub_token, leethub_hook, stats } = await api.storage.local.get([
+  const {
+    leethub_token,
+    leethub_hook,
+    leethub_default_branch,
+    stats,
+  } = await api.storage.local.get([
     'leethub_token',
     'leethub_hook',
+    'leethub_default_branch',
     'stats',
   ]);
 
@@ -408,7 +414,13 @@ async function updateReadmeTopicTagsWithProblem(topicTags, problemName) {
   }
   readme = decode(readme);
   for (let topic of topicTags) {
-    readme = appendProblemToReadme(topic.name, readme, leethub_hook, problemName);
+    readme = appendProblemToReadme(
+      topic.name,
+      readme,
+      leethub_hook,
+      problemName,
+      leethub_default_branch || 'main'
+    );
   }
   readme = sortTopicsInReadme(readme);
   readme = encode(readme);
